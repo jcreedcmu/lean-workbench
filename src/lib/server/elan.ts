@@ -46,7 +46,7 @@ export async function elanUninstall(leanVersion: string) {
 
 export function startElanInstall(leanVersion: string) {
   const ELAN_HOME = getElanDir()
-  return startTrackedCommand('elan', getElanBin(), ['toolchain', 'install', leanVersion], {
+  return startTrackedCommand('elan', { kind: 'admin' }, getElanBin(), ['toolchain', 'install', leanVersion], {
     env: { ...process.env, ELAN_HOME },
   })
 }
