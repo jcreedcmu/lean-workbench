@@ -127,8 +127,40 @@ function detectArtefact(kind: ArtefactKind, entry: unknown): DetectedArtefact {
   const { id, displayName } = kind
   const config = kind.zConfig.safeParse(entry)
   if (!config.success) {
-    const error = config.error.issues.map(issue => `${[id, ...issue.path].join('.')}: ${issue.message}`).join('; ')
-    return { id, displayName, error }
+    const complaints = config.error.issues.map(issue => describeIssue(id, entry, issue))
+    return { id, displayName, error: `${PUBLISH_MANIFEST_FILE} is ill-formed. ${complaints.join('; ')}` }
   }
   return { id, displayName, plan: kind.plan(config.data), description: kind.describe(config.data) }
+}
+
+/** Say what is wrong with one entry and where, in terms of the file the author wrote.
+ * Zod's own messages name neither the manifest nor the offending value's location. */
+function describeIssue(kindId: string, entry: unknown, issue: z.core.$ZodIssue): string {
+  const path = [kindId, ...issue.path].map(seg => (typeof seg === 'number' ? `[${seg}]` : `.${String(seg)}`)).join('')
+  const where = `in JSON path \`${path}\``
+  const found = valueAt(entry, issue.path)
+  switch (issue.code) {
+    case 'invalid_type':
+      return `Expected ${issue.expected}, found ${describeValue(found)} ${where}`
+    case 'invalid_value':
+      return `Expected one of ${issue.values.map(v => JSON.stringify(v)).join(', ')}, found ${JSON.stringify(found)} ${where}`
+    default:
+      return `${issue.message} ${where}`
+  }
+}
+
+/** Name a JSON value by its type, as the manifest's author would think of it. */
+function describeValue(value: unknown): string {
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return 'array'
+  return typeof value
+}
+
+function valueAt(root: unknown, path: readonly PropertyKey[]): unknown {
+  let value = root
+  for (const segment of path) {
+    if (typeof value !== 'object' || value === null) return undefined
+    value = (value as Record<PropertyKey, unknown>)[segment]
+  }
+  return value
 }
