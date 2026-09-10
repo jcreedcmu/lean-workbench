@@ -326,9 +326,16 @@ and the publish origin carries no cookies. It is an `internal` nginx location, s
 cannot reach it directly.
 
 Resolving on the leading segments only, rather than on the whole URI, lets nginx append the
-remaining path itself and lets the cache hold one verdict per publication instead of one
-per asset. The cost of this arrangement is that publications stop serving when Next.js is
-down, where a bare `alias` would have kept working.
+remaining path itself, so the resolver returns a directory rather than validating a full
+file path the way `/_file/` must. The cost of this arrangement is that publications stop
+serving when Next.js is down, where a bare `alias` would have kept working.
+
+Every asset of a publication shares one cache key, so a brief cache collapses the burst of
+parallel requests that a single page load fires. It is deliberately brief. A cached verdict
+names a publication by id, and unpublishing followed by republishing mints a new one, so a
+long-lived verdict would go on pointing at a directory that no longer exists. Caching for
+minutes buys a few milliseconds per page load on a one-machine deployment and costs a class
+of stale-resolution bugs; three seconds keeps the part that does the work.
 
 Nginx gains a second `server` block, and the app's block becomes `default_server`:
 
@@ -367,7 +374,7 @@ server {                       # publications: static files, nothing else
         proxy_set_header X-Auth-URI $auth_route_uri;
         proxy_cache auth_route_cache;
         proxy_cache_key $auth_route_cache_key;
-        proxy_cache_valid 200 10m;
+        proxy_cache_valid 200 3s;
     }
 
     location / { return 404; }        # the app is not reachable on this origin

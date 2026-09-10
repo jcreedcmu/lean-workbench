@@ -215,12 +215,14 @@ http {
 
             proxy_set_header X-Auth-URI $auth_route_uri;
 
-            # Only 200s are cached, so a newly published URL is never stuck on a 404.
-            # Unpublishing removes the directory as well as the row,
-            # so a cached verdict cannot outlive the files it points at.
+            # Cached only long enough to collapse the burst of parallel requests
+            # that one page load fires, since every asset of a publication shares this key.
+            # It must stay short: a verdict names a publication by ID, and unpublishing
+            # followed by republishing mints a new one, so a longer-lived verdict would
+            # go on pointing at a directory that no longer exists.
             proxy_cache auth_route_cache;
             proxy_cache_key $auth_route_cache_key;
-            proxy_cache_valid 200 10m;
+            proxy_cache_valid 200 3s;
         }
 
         location @pub_not_found {
