@@ -184,14 +184,16 @@ async function finishPublish(project: Project, kind: string, plan: BuildPlan, ex
   }
 }
 
-/** Take all of a project's publications out of service and remove their files.
+/** Take a project's publications out of service and remove their files,
+ * either all of them or just the one of the given kind.
  *
  * Rows go first: a publication is live exactly while its row exists,
  * so an interruption here leaves unreferenced directories
  * rather than rows pointing at files that are gone. */
-export async function deleteProjectPublications(projectId: string): Promise<void> {
+export async function deletePublications(projectId: string, kind?: string): Promise<void> {
   const db = getDb()
-  const publications = await db.publication.findMany({ where: { projectId } })
-  await db.publication.deleteMany({ where: { projectId } })
+  const where = { projectId, ...(kind === undefined ? {} : { kind }) }
+  const publications = await db.publication.findMany({ where })
+  await db.publication.deleteMany({ where })
   await Promise.all(publications.map(p => fs.rm(getPublicationDir(p.id), { recursive: true, force: true })))
 }

@@ -157,5 +157,8 @@ export async function startSchemaTemplate(toolchain: string, schema: TemplateSch
       break
   }
 
-  return startTrackedCommand('create-template', { kind: 'admin' }, path.join(getScriptsDir(), script), args)
+  // Both parts of this path are opaque to Turbopack, which would otherwise trace the whole
+  // project into the build output. Our deployment ships the repo anyway; see AGENTS.md.
+  const scriptPath = path.join(/*turbopackIgnore: true*/ getScriptsDir(), script)
+  return startTrackedCommand('create-template', { kind: 'admin' }, scriptPath, args)
 }

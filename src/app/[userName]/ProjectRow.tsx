@@ -66,6 +66,9 @@ export function ProjectRow({ project, username }: { project: ProjectInfo; userna
         <Link href={`/${username}/${encodeURIComponent(project.name)}/` as Route}>{project.name}</Link>
       </div>
       <div className='actions'>
+        <Link className='button' href={`/${username}/${encodeURIComponent(project.name)}/publish` as Route}>
+          Publish
+        </Link>
         <button
           onClick={() => {
             startTransition(() => visibilityAction({ projectId: project.id, isPublic: !project.isPublic }))
