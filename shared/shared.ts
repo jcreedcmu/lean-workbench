@@ -198,13 +198,16 @@ export const zBaseUser = z.object({
 export type BaseUser = z.output<typeof zBaseUser>
 
 /**
- * Package identity objects passed outside of the Next app.
+ * Project identity objects passed outside of the Next app.
  * Must match the pattern of the inferred Prisma `Project` type.
  */
 export const zBaseProject = z.object({ id: zProjectId, name: zProjectName })
 
 /**
- * Package identity objects passed outside of the Next app.
+ * Project identity objects passed outside of the Next app.
  * Must match the pattern of the inferred Prisma `Project` type.
  */
 export type BaseProject = z.output<typeof zBaseProject>
+
+/** Filesystem location of the unix domain socket that connects the next.js server to the shard manager */
+export const SHARD_MANAGER_SOCK = '/tmp/lean-workbench/shard-manager.sock'

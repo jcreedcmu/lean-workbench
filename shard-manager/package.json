@@ -1,0 +1,14 @@
+{
+  "name": "@leanprover/workbench-shard-manager",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tsc": "tsc"
+  },
+  "main": "src/export.ts",
+  "dependencies": {
+    "@leanprover/workbench-shared": "*",
+    "@trpc/server": "^11.19.0"
+  }
+}
