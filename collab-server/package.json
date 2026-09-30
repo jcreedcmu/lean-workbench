@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./trpc": "./src/trpc.ts"
+  },
   "scripts": {
     "watch": "concurrently --names esbuild,tsc --kill-others-on-fail 'npm run watch:esbuild' 'npm run watch:tsc'",
     "watch:esbuild": "node esbuild.mjs --watch",
@@ -14,6 +18,9 @@
     "@hocuspocus/extension-database": "^4.0.0",
     "@hocuspocus/server": "^4.0.0",
     "@leanprover/workbench-shared": "*",
-    "esbuild": "^0.28"
+    "@trpc/server": "^11.19.0",
+    "esbuild": "^0.28",
+    "ws": "^8.20",
+    "zod": "^4.6.5"
   }
 }
