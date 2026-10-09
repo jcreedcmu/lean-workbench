@@ -716,3 +716,13 @@ h2.with-filter {
   justify-content: right;
   margin-top: 10px;
 }
+
+/* === Live views === */
+pre.lean-hover {
+  white-space: pre-wrap;
+  background: #fff;
+  border: 1px solid #e4ebf3;
+  border-radius: 4px;
+  padding: 10px;
+  overflow-x: auto;
+}

@@ -7,6 +7,8 @@ import { type BackendId, describeValue, LAKE_TARGET_RE } from '@leanprover/workb
 import type { ReactNode } from 'react'
 import z from 'zod'
 
+import HelloClient from '@/lib/views/HelloClient'
+
 /**
  * A project declares the views it supports in a manifest at its root,
  * whose top level maps each view's id to that view's configuration:
@@ -23,12 +25,16 @@ import z from 'zod'
  */
 export const PUBLISH_MANIFEST_FILE = 'workbench-publish.json'
 
-/** What the route hands a live view's client. */
+/** What the route hands a live view's client.
+ * Everything environment-specific arrives here,
+ * so that a client may be an imported library that decides none of it. */
 export interface ViewClientProps<Config = unknown> {
   /** The view's entry in the project's manifest, already validated. */
   config: Config
+  /** Where the backends see the project's files, which is their workspace root. */
+  projectDir: string
   /** Browser URL of each backend the view declared. */
-  backends: Record<BackendId, string>
+  backends: Partial<Record<BackendId, string>>
   /** Base URL under which each project directory the view declared is readable,
    * keyed by the prop name the view chose for it. */
   data: Record<string, string>
@@ -75,6 +81,9 @@ export interface BuildPlan {
   siteDir?: string
 }
 
+/** The probe takes no configuration; `"hello": {}` in the manifest is the whole declaration. */
+const zHelloConfig = z.object({})
+
 const zVersoConfig = z.object({
   /** The Verso document type, which decides where the generator writes the site. */
   genre: z.enum(['manual', 'blog']),
@@ -95,7 +104,15 @@ const versoView: ViewDefinition<z.infer<typeof zVersoConfig>> = {
   publish: { shape: 'site' },
 }
 
-export const VIEWS: readonly ViewDefinition[] = [versoView]
+const helloView: ViewDefinition<z.infer<typeof zHelloConfig>> = {
+  id: 'hello',
+  displayName: 'Lean LSP probe',
+  zConfig: zHelloConfig,
+  describe: () => 'Looks identifiers up in a live Lean server running on this project',
+  live: { backends: ['lean-lsp'], Client: HelloClient, access: 'viewer' },
+}
+
+export const VIEWS: readonly ViewDefinition[] = [versoView, helloView]
 
 /** A view the project's manifest declares,
  * either resolved against its configuration

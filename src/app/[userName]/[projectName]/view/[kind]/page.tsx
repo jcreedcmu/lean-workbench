@@ -1,4 +1,4 @@
-import { zProjectName, zUserName } from '@leanprover/workbench-shared'
+import { bwrapProjectDir, zProjectName, zUserName } from '@leanprover/workbench-shared'
 import { getProjectDir } from '@leanprover/workbench-shared/node'
 import { type Route } from 'next'
 import { notFound, redirect } from 'next/navigation'
@@ -8,6 +8,7 @@ import z from 'zod'
 import ErrorBox from '@/app/components/ErrorBox'
 import { getConfig, isPublishingEnabled } from '@/lib/server/config'
 import { publicationUrl } from '@/lib/server/publish'
+import { getShardCoordinator } from '@/lib/server/shardConnection'
 import { requireProjectAccess } from '@/lib/server/util'
 import { detectViews, VIEWS } from '@/lib/server/views'
 
@@ -52,6 +53,9 @@ export default async function ViewPage({ params: params_ }: { params: Promise<Pa
   if (!view) notFound()
   if ('error' in view) return <ErrorBox>{view.error}</ErrorBox>
 
-  // No view declares `live` yet, so nothing reaches this.
-  notFound()
+  const { live } = definition
+  // May throw to the error boundary, e.g. if the project directory is not accessible.
+  const backends = await getShardCoordinator().ensureView(viewer, owner, project, live.backends)
+
+  return <live.Client config={view.config} projectDir={bwrapProjectDir(project.name)} backends={backends} data={{}} />
 }
