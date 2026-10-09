@@ -94,6 +94,17 @@ export class JsonRpcWebSocket {
   }
 }
 
+/** LSP severity for a diagnostic that means the document is wrong, from the LSP specification. */
+export const LSP_SEVERITY_ERROR = 1
+
+/** One thing Lean reports about a document. */
+export interface LspDiagnostic {
+  range: { start: { line: number; character: number }; end: { line: number; character: number } }
+  /** 1 error, 2 warning, 3 information, 4 hint; absent when the server does not say. */
+  severity?: number
+  message: string
+}
+
 /** LSP `Hover.contents` is one of several shapes; reduce it to plain text. */
 function hoverText(contents: unknown): string {
   if (typeof contents === 'string') return contents
@@ -117,6 +128,8 @@ export class LeanLspSession {
   private version = 0
   private baseText = ''
   private readonly uri: string
+  /** Diagnostics most recently published for {@link uri}. */
+  private diagnostics: LspDiagnostic[] = []
   /** Why the session finished, once it has. */
   private ended: string | undefined
 
@@ -149,9 +162,16 @@ export class LeanLspSession {
     this.opts.onEnd(reason)
   }
 
+  private onNotify(method: string, params: unknown): void {
+    if (method !== 'textDocument/publishDiagnostics') return
+    const published = params as { uri?: string; diagnostics?: LspDiagnostic[] }
+    if (published.uri !== this.uri) return
+    this.diagnostics = published.diagnostics ?? []
+  }
+
   private async open(): Promise<JsonRpcWebSocket> {
     const [client, baseText] = await Promise.all([
-      JsonRpcWebSocket.connect(this.opts.path),
+      JsonRpcWebSocket.connect(this.opts.path, (method, params) => this.onNotify(method, params)),
       this.opts.loadContext?.() ?? '',
     ])
     void client.closed.then(ev => this.end(ev.reason === '' ? 'The Lean server connection closed.' : ev.reason))
@@ -176,16 +196,9 @@ export class LeanLspSession {
     return this.connecting
   }
 
-  /** Look up `identifier` in the project's context, returning the LSP's hover text
-   * (type plus docstring), or `null` if it resolves to nothing. */
-  async lookup(identifier: string): Promise<string | null> {
-    const client = await this.ensureClient()
-
-    const base = this.baseText.endsWith('\n') ? this.baseText : this.baseText === '' ? '' : this.baseText + '\n'
-    const checkLine = base.split('\n').length - 1
-    const text = `${base}#check ${identifier.replace(/\s+/g, ' ').trim()}\n`
+  /** Make `text` the whole scratch document and wait until Lean has finished elaborating it. */
+  private async elaborate(client: JsonRpcWebSocket, text: string): Promise<void> {
     const version = ++this.version
-
     if (this.opened) {
       client.notify('textDocument/didChange', {
         textDocument: { uri: this.uri, version },
@@ -197,11 +210,28 @@ export class LeanLspSession {
       })
       this.opened = true
     }
-
     // Answers once every diagnostic for `version` or later has been emitted,
-    // so the hover below reads a fully elaborated document.
+    // so whatever the caller reads next sees a fully elaborated document.
     // Note the bare `uri`: these params are not a `TextDocumentIdentifier`.
     await client.request('textDocument/waitForDiagnostics', { uri: this.uri, version })
+  }
+
+  /** Elaborate `text` as the whole scratch document and return what Lean reports about it. */
+  async check(text: string): Promise<LspDiagnostic[]> {
+    const client = await this.ensureClient()
+    this.diagnostics = []
+    await this.elaborate(client, text)
+    return this.diagnostics
+  }
+
+  /** Look up `identifier` in the project's context, returning the LSP's hover text
+   * (type plus docstring), or `null` if it resolves to nothing. */
+  async lookup(identifier: string): Promise<string | null> {
+    const client = await this.ensureClient()
+
+    const base = this.baseText.endsWith('\n') ? this.baseText : this.baseText === '' ? '' : this.baseText + '\n'
+    const checkLine = base.split('\n').length - 1
+    await this.elaborate(client, `${base}#check ${identifier.replace(/\s+/g, ' ').trim()}\n`)
 
     // `#check <id>` places the identifier at character 7, just past "#check ", on the last line.
     const hover = await client.request<{ contents: unknown } | null>('textDocument/hover', {

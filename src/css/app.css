@@ -732,3 +732,13 @@ pre.lean-hover {
   list-style: none;
   padding: 0;
 }
+.toy-game-tactics {
+  display: block;
+  width: 100%;
+  font-family: monospace;
+  margin-bottom: 0.5rem;
+}
+.toy-game-solved {
+  font-weight: 600;
+  color: #2e7d32;
+}
