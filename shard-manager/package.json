@@ -9,6 +9,10 @@
   "main": "src/export.ts",
   "dependencies": {
     "@leanprover/workbench-shared": "*",
-    "@trpc/server": "^11.19.0"
+    "@trpc/server": "^11.19.0",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
   }
 }

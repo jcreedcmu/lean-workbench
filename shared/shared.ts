@@ -139,6 +139,11 @@ export function bwrapProjectDir(projectName: string) {
   return `/workspace/${projectName}/`
 }
 
+/** WebSocket close code sent when a newer connection takes over a view's Lean server.
+ * In the 4000-4999 range RFC 6455 reserves for applications.
+ * A page closed this way must not reconnect: it would displace the newer page in turn. */
+export const WS_VIEW_DISPLACED = 4000
+
 /** Path to workspace metadata file in VSCode bwraps. */
 export const BWRAP_METADATA_PATH = '/workspace/.lean-workbench.json'
 

@@ -5,7 +5,7 @@ import { SHARD_MANAGER_SOCK } from '@leanprover/workbench-shared'
 import { createHTTPServer } from '@trpc/server/adapters/standalone'
 
 import { inFlightTrpcMutations, serverIsStopping, shardManagerRouter } from './manager.ts'
-import { collabServers, mounts, vscServers } from './state.ts'
+import { collabServers, lspServers, mounts, vscServers } from './state.ts'
 
 const server = createHTTPServer({
   router: shardManagerRouter,
@@ -48,6 +48,12 @@ async function shutdown(reason: string, error?: unknown) {
     vscServers
       .values()
       .flatMap(vscServersForProject => vscServersForProject.map(vscServer => vscServer[Symbol.asyncDispose]())),
+  )
+
+  console.log('Terminating live view backends')
+  await settleAndLogErrors(
+    'terminating live view backend',
+    lspServers.values().flatMap(handles => handles.map(handle => handle[Symbol.asyncDispose]())),
   )
 
   console.log('Terminating collaboration servers')
