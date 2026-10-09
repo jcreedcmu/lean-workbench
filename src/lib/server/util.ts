@@ -54,6 +54,23 @@ export function canAccessProject(user: User, project: Project) {
   return isOwner || project.isPublic
 }
 
+/** Resolve `<userName>/<projectName>` for a route any viewer of the project may reach,
+ * along with the viewer who reached it.
+ *
+ * Anything the viewer may not see is reported as 404 rather than 403,
+ * so the route does not leak the existence of inaccessible projects. */
+export async function requireProjectAccess(userName: string, projectName: string) {
+  const { user: viewer } = await requireAuth()
+  const db = getDb()
+  const owner = await db.user.findUnique({ where: { name: userName } })
+  if (!owner) notFound()
+  const project = await db.project.findUnique({
+    where: { userId_name: { userId: owner.id, name: projectName } },
+  })
+  if (!project || !canAccessProject(viewer, project)) notFound()
+  return { viewer, owner, project }
+}
+
 /** Resolve `<userName>/<projectName>` for an owner-only route,
  * where the requesting user must be the project's owner.
  *

@@ -3,10 +3,6 @@ import { type Route } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import z from 'zod'
 
-import { getConfig, isPublishingEnabled } from '@/lib/server/config'
-import { publicationUrl } from '@/lib/server/publish'
-import { VIEWS } from '@/lib/server/views'
-
 const zParams = z.object({
   userName: zUserName,
   projectName: zProjectName,
@@ -15,13 +11,11 @@ const zParams = z.object({
 
 type Params = z.infer<typeof zParams>
 
-/** Redirects `/:userName/:projectName/:kind` to the same path on `pubBaseUrl`,
- * where publications are actually served. */
-export default async function PublicationRedirect({ params: params_ }: { params: Promise<Params> }) {
-  if (!isPublishingEnabled(getConfig())) notFound()
+/** Redirects `/:userName/:projectName/:kind` to `view/:kind`, where views now live.
+ * Kept so that links minted before views had their own path segment still resolve. */
+export default async function LegacyViewRedirect({ params: params_ }: { params: Promise<Params> }) {
   const parsed = zParams.safeParse(await params_)
   if (!parsed.success) notFound()
   const { userName, projectName, kind } = parsed.data
-  if (!VIEWS.some(v => v.id === kind)) notFound()
-  redirect(publicationUrl(userName, projectName, kind) as Route)
+  redirect(`/${userName}/${projectName}/view/${kind}` as Route)
 }
