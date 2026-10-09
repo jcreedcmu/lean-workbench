@@ -30,8 +30,9 @@ export const startPublishing = submitAction(
     const view = manifest.views.find(v => v.id === kind)
     if (!view) return { error: `This project does not declare a '${kind}' view.` }
     if ('error' in view) return { error: view.error }
+    if (!view.build) return { error: `The '${kind}' view builds nothing, so there is nothing to publish.` }
 
-    return startPublish(owner, project, kind, view.plan)
+    return startPublish(owner, project, kind, view.build)
   },
 )
 

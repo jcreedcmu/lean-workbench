@@ -177,6 +177,7 @@ async function finishPublish(
 ) {
   try {
     if (exit.type !== 'success') return
+    if (plan.siteDir === undefined) throw new Error('the build declares no site directory, so it publishes nothing')
 
     const siteDir = path.join(stagingDir, plan.siteDir)
     if (!(await existsAsync(siteDir))) {
