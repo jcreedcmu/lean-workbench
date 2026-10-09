@@ -726,3 +726,9 @@ pre.lean-hover {
   padding: 10px;
   overflow-x: auto;
 }
+.toy-game-levels {
+  display: flex;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+}

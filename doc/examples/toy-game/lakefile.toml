@@ -1,0 +1,7 @@
+name = "toygame"
+version = "0.1.0"
+defaultTargets = ["generateGame"]
+
+[[lean_exe]]
+name = "generateGame"
+root = "GenerateGame"

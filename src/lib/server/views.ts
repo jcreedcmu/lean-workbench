@@ -8,6 +8,8 @@ import type { ReactNode } from 'react'
 import z from 'zod'
 
 import HelloClient, { HELLO_CONTEXT_FILE } from '@/lib/views/HelloClient'
+import { TOY_GAME_DATA_DIR } from '@/lib/views/toyGame'
+import ToyGameClient from '@/lib/views/ToyGameClient'
 
 /**
  * A project declares the views it supports in a manifest at its root,
@@ -126,7 +128,27 @@ const helloView: ViewDefinition<z.infer<typeof zHelloConfig>> = {
   },
 }
 
-export const VIEWS: readonly ViewDefinition[] = [versoView, helloView]
+const zToyGameConfig = z.object({
+  /** Lake executable target that writes the game's levels. */
+  exe: z.string().regex(LAKE_TARGET_RE, 'Invalid Lake target name'),
+})
+
+const toyGameView: ViewDefinition<z.infer<typeof zToyGameConfig>> = {
+  id: 'toy-game',
+  displayName: 'Toy game',
+  zConfig: zToyGameConfig,
+  describe: config => `Toy Lean game, whose levels the Lake target '${config.exe}' generates`,
+  build: config => ({ script: 'build-toy-game.sh', args: [config.exe], siteDir: '.' }),
+  publish: { shape: 'data' },
+  live: {
+    backends: ['lean-lsp'],
+    Client: ToyGameClient,
+    access: 'viewer',
+    projectData: () => ({ game: TOY_GAME_DATA_DIR }),
+  },
+}
+
+export const VIEWS: readonly ViewDefinition[] = [versoView, helloView, toyGameView]
 
 /** A view the project's manifest declares,
  * either resolved against its configuration
