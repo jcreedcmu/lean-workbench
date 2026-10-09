@@ -7,8 +7,9 @@ import z from 'zod'
 import ErrorBox from '@/app/components/ErrorBox'
 import { getConfig, isPublishingEnabled } from '@/lib/server/config'
 import { getDb } from '@/lib/server/db'
-import { durablePublicationUrl, publicationUrl, publishTrackingKey } from '@/lib/server/publish'
+import { durablePublicationUrl, publicationUrl } from '@/lib/server/publish'
 import { requireProjectOwner } from '@/lib/server/util'
+import { viewBuildKey } from '@/lib/server/viewBuild'
 import { detectViews, PUBLISH_MANIFEST_FILE } from '@/lib/server/views'
 
 import { type PublicationInfo, PublishCard } from './PublishCard'
@@ -73,7 +74,7 @@ export default async function PublishPage({ params: params_ }: { params: Promise
           displayName={view.displayName}
           detail={'error' in view ? { error: view.error } : { description: view.description }}
           publication={publicationFor(view.id)}
-          trackingKey={publishTrackingKey(project.id, view.id)}
+          trackingKey={viewBuildKey(project.id, view.id)}
         />
       ))}
     </>

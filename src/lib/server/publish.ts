@@ -4,39 +4,14 @@ import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
-import { bwrapProjectDir } from '@leanprover/workbench-shared'
-import {
-  BWRAP_ARGS,
-  bwrapHomeDir,
-  existsAsync,
-  getElanDir,
-  getPublicationDir,
-  getScriptsDir,
-  makeTempBuildDir,
-} from '@leanprover/workbench-shared/node'
+import { existsAsync, getPublicationDir } from '@leanprover/workbench-shared/node'
 
-import { type User } from '@/lib/server/auth'
 import { getConfig, isPublishingEnabled } from '@/lib/server/config'
 import { getDb } from '@/lib/server/db'
-import {
-  countRunningTrackedCommands,
-  getUserTrackedCommandState,
-  startTrackedCommand,
-} from '@/lib/server/trackedCommand'
-import { type ActionResponse, type TrackedCommandExit } from '@/lib/util'
+import { type TrackedCommandExit } from '@/lib/util'
 import { type Prisma, type Project } from '@/prisma/generated/client'
 
-import { getShardCoordinator } from './shardConnection'
 import { type BuildPlan } from './views'
-
-const PUBLISH_KEY_PREFIX = 'publish-'
-
-/** Tracking key of a project's build of one view.
- * One build at a time per project and view falls out of
- * `startTrackedCommand` refusing a key that is already running. */
-export function publishTrackingKey(projectId: string, kind: string): string {
-  return `${PUBLISH_KEY_PREFIX}${projectId}-${kind}`
-}
 
 /** First segment of a publication's durable URL.
     TODO(#132): ensure there is no user named "pub" */
@@ -59,105 +34,6 @@ export function durablePublicationUrl(publicationId: string): string {
   return `${getPubBaseUrl()}/${PUB_DURABLE_PREFIX}/${publicationId}/`
 }
 
-/** Where the sandbox sees the workbench's scripts. */
-const SANDBOX_SCRIPTS_DIR = '/publish/scripts'
-/** Where the sandbox sees the staging directory that the build writes into. */
-const SANDBOX_OUT_DIR = '/publish/out'
-
-/** Start a sandboxed build of one of `project`'s publishable views,
- * streaming its output to `owner` under {@link publishTrackingKey}.
- *
- * Resolves once the build has been started, not when it finishes:
- * the output is swapped into place by an `exit` listener,
- * so publishing completes whether or not a browser is still watching. */
-export async function startPublish(
-  owner: User,
-  project: Project,
-  kind: string,
-  plan: BuildPlan,
-): Promise<ActionResponse<boolean>> {
-  if (
-    countRunningTrackedCommands(key => key.startsWith(PUBLISH_KEY_PREFIX)) >= getConfig().maxConcurrentPublishBuilds
-  ) {
-    return {
-      error:
-        'The server has reached the limit of how many publication builds can be active at the same time. ' +
-        'Try again later.',
-    }
-  }
-
-  const trackingKey = publishTrackingKey(project.id, kind)
-  // `startTrackedCommand` below is what actually claims the key.
-  // Checking first only avoids building an overlay mount we would immediately tear down.
-  if (getUserTrackedCommandState(owner, trackingKey)?.status === 'running') return { ok: false }
-
-  // If there was a prior publication, the id of it, or `undefined`
-  // otherwise. `finishPublish` will check for the prior publication.
-  // If it's missing, we interpret this as the owner unpublished while
-  // the build ran, and the output is discarded rather than reviving
-  // the publication.
-  const priorPub = (
-    await getDb().publication.findUnique({ where: { projectId_kind: { projectId: project.id, kind } } })
-  )?.id
-
-  await using stack = new AsyncDisposableStack()
-
-  const stagingDir = await makeTempBuildDir(trackingKey)
-
-  // Must be the shared mount: a second overlay on the same upper layer would corrupt the project.
-  const mount = stack.use(await getShardCoordinator().acquireProjectMount(owner, project))
-
-  const { homeDir } = await getShardCoordinator().ensureHomeDirectory(owner)
-  const elanDir = getElanDir()
-  const sandboxHomeDir = bwrapHomeDir(owner.name)
-
-  const emitter = startTrackedCommand(
-    trackingKey,
-    { kind: 'user', userId: owner.id },
-    'bwrap',
-    // prettier-ignore
-    [
-      ...BWRAP_ARGS,
-      '--ro-bind', elanDir, elanDir,
-      '--ro-bind', getScriptsDir(), SANDBOX_SCRIPTS_DIR,
-      // `lake` needs a writable home for its caches.
-      '--bind', homeDir, sandboxHomeDir,
-      '--bind', stagingDir, SANDBOX_OUT_DIR,
-      '--setenv', 'HOME', sandboxHomeDir,
-      '--setenv', 'ELAN_HOME', elanDir,
-      '--setenv', 'PATH', `${elanDir}/bin:/usr/local/bin:/usr/bin:/bin`,
-      // The overlay mount makes `lake`'s dependency clones look dubiously owned to Git
-      // (CVE-2022-24765); see the same workaround in `VscodeServerHandle.start`.
-      '--setenv', 'GIT_CONFIG_COUNT', '1',
-      '--setenv', 'GIT_CONFIG_KEY_0', 'safe.directory',
-      '--setenv', 'GIT_CONFIG_VALUE_0', '*',
-      ...mount.bindArgs,
-      '--chdir', bwrapProjectDir(project.name),
-      '--',
-      path.join(SANDBOX_SCRIPTS_DIR, plan.script), SANDBOX_OUT_DIR, ...plan.args,
-    ],
-  )
-  if (!emitter) return { ok: false }
-
-  emitter.on('exit', exit => {
-    void (async () => {
-      try {
-        try {
-          await finishPublish(project, kind, plan, stagingDir, exit, priorPub)
-        } finally {
-          await mount[Symbol.asyncDispose]()
-        }
-      } catch (e: unknown) {
-        console.error(`[publish] ${project.id}/${kind} did not complete: ${String(e)}`)
-      }
-    })()
-  })
-
-  // The build owns the mount lease from here on.
-  stack.move()
-  return { ok: true }
-}
-
 /** Swap a finished build's output into place, or discard it.
  *
  * A failed build leaves any existing publication exactly as it was.
@@ -166,8 +42,10 @@ export async function startPublish(
  * and a build that no longer has one has been overtaken by the owner.
  *
  * The URL 404s briefly while the directories are exchanged;
- * avoiding that would mean a database lookup in front of every static asset. */
-async function finishPublish(
+ * avoiding that would mean a database lookup in front of every static asset.
+ *
+ * The caller owns the staging directory, and removes it whether this throws or not. */
+export async function finishPublish(
   project: Project,
   kind: string,
   plan: BuildPlan,
@@ -175,57 +53,53 @@ async function finishPublish(
   exit: TrackedCommandExit,
   priorPub: string | undefined,
 ) {
-  try {
-    if (exit.type !== 'success') return
-    if (plan.siteDir === undefined) throw new Error('the build declares no site directory, so it publishes nothing')
+  if (exit.type !== 'success') return
+  if (plan.siteDir === undefined) throw new Error('the build declares no site directory, so it publishes nothing')
 
-    const siteDir = path.join(stagingDir, plan.siteDir)
-    if (!(await existsAsync(siteDir))) {
-      throw new Error(`the build wrote no '${plan.siteDir}' directory, so it produced no site`)
-    }
-
-    const db = getDb()
-    const where = { projectId_kind: { projectId: project.id, kind } }
-    const current = (await db.publication.findUnique({ where }))?.id
-    if (priorPub !== undefined && current !== priorPub) return
-
-    const id = current ?? crypto.randomUUID()
-
-    // Before moving anything: if the project has been deleted, the foreign key fails here,
-    // while the output is still in staging for the `finally` below to remove.
-    await db.publication.upsert({
-      where,
-      create: { id, projectId: project.id, kind },
-      update: { updatedAt: new Date() },
-    })
-
-    const liveDir = getPublicationDir(id)
-    const replacedDir = `${stagingDir}-replaced`
-
-    // Why rename-then-rm the old directory?
-    // - avoid a partially deleted publication being visible
-    // - get to a state where the new publication *is* visible as soon as possible
-    //   because the renames are fast and the recursive rm might be slower.
-    //
-    // Why not atomically swap a symlink?
-    // - We must for security reasons disable symlinks from being
-    //   followed by nginx *inside* publications, because otherwise
-    //   malicious publications could exfiltrate other parts of the
-    //   filesystem that they're not meant to. For now, prefer a big
-    //         disable_symlinks on;
-    //  in nginx-pub.conf.template to avoid any future accidents.
-    //  The disadvantage of the lack of atomicity here is mild; the
-    //  user might get a transient 404 if their timing is very
-    //  unlikely. We could consider having a database entry be the
-    //  "pointer" to the filesystem position of the current
-    //  publication version. If we move to keeping multiple versions
-    //  of a publication we should probably do this.
-    if (await existsAsync(liveDir)) await fs.rename(liveDir, replacedDir)
-    await fs.rename(siteDir, liveDir)
-    await fs.rm(replacedDir, { recursive: true, force: true })
-  } finally {
-    await fs.rm(stagingDir, { recursive: true, force: true })
+  const siteDir = path.join(stagingDir, plan.siteDir)
+  if (!(await existsAsync(siteDir))) {
+    throw new Error(`the build wrote no '${plan.siteDir}' directory, so it produced no site`)
   }
+
+  const db = getDb()
+  const where = { projectId_kind: { projectId: project.id, kind } }
+  const current = (await db.publication.findUnique({ where }))?.id
+  if (priorPub !== undefined && current !== priorPub) return
+
+  const id = current ?? crypto.randomUUID()
+
+  // Before moving anything: if the project has been deleted, the foreign key fails here,
+  // while the output is still in staging for the caller to remove.
+  await db.publication.upsert({
+    where,
+    create: { id, projectId: project.id, kind },
+    update: { updatedAt: new Date() },
+  })
+
+  const liveDir = getPublicationDir(id)
+  const replacedDir = `${stagingDir}-replaced`
+
+  // Why rename-then-rm the old directory?
+  // - avoid a partially deleted publication being visible
+  // - get to a state where the new publication *is* visible as soon as possible
+  //   because the renames are fast and the recursive rm might be slower.
+  //
+  // Why not atomically swap a symlink?
+  // - We must for security reasons disable symlinks from being
+  //   followed by nginx *inside* publications, because otherwise
+  //   malicious publications could exfiltrate other parts of the
+  //   filesystem that they're not meant to. For now, prefer a big
+  //         disable_symlinks on;
+  //  in nginx-pub.conf.template to avoid any future accidents.
+  //  The disadvantage of the lack of atomicity here is mild; the
+  //  user might get a transient 404 if their timing is very
+  //  unlikely. We could consider having a database entry be the
+  //  "pointer" to the filesystem position of the current
+  //  publication version. If we move to keeping multiple versions
+  //  of a publication we should probably do this.
+  if (await existsAsync(liveDir)) await fs.rename(liveDir, replacedDir)
+  await fs.rename(siteDir, liveDir)
+  await fs.rm(replacedDir, { recursive: true, force: true })
 }
 
 /** Take the matching publications out of service and remove their files.

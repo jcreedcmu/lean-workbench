@@ -5,8 +5,9 @@ import { getProjectDir } from '@leanprover/workbench-shared/node'
 import z from 'zod'
 
 import { getConfig, isPublishingEnabled } from '@/lib/server/config'
-import { deletePublications, startPublish } from '@/lib/server/publish'
+import { deletePublications } from '@/lib/server/publish'
 import { requireProjectOwner, serverAction, submitAction } from '@/lib/server/util'
+import { startViewBuild } from '@/lib/server/viewBuild'
 import { detectViews } from '@/lib/server/views'
 import { type ActionResponse } from '@/lib/util'
 
@@ -32,7 +33,7 @@ export const startPublishing = submitAction(
     if ('error' in view) return { error: view.error }
     if (!view.build) return { error: `The '${kind}' view builds nothing, so there is nothing to publish.` }
 
-    return startPublish(owner, project, kind, view.build)
+    return startViewBuild(owner, project, kind, view.build)
   },
 )
 
