@@ -7,7 +7,7 @@ import { type BackendId, describeValue, LAKE_TARGET_RE } from '@leanprover/workb
 import type { ReactNode } from 'react'
 import z from 'zod'
 
-import HelloClient from '@/lib/views/HelloClient'
+import HelloClient, { HELLO_CONTEXT_FILE } from '@/lib/views/HelloClient'
 
 /**
  * A project declares the views it supports in a manifest at its root,
@@ -25,6 +25,11 @@ import HelloClient from '@/lib/views/HelloClient'
  */
 export const PUBLISH_MANIFEST_FILE = 'workbench-publish.json'
 
+/** Where a live view's client reads one of the project directories its view declared.
+ * `missing` names the directory that is not in the project,
+ * which for a view that builds its own data means it has not been built yet. */
+export type ViewData = { url: string } | { missing: string }
+
 /** What the route hands a live view's client.
  * Everything environment-specific arrives here,
  * so that a client may be an imported library that decides none of it. */
@@ -35,9 +40,8 @@ export interface ViewClientProps<Config = unknown> {
   projectDir: string
   /** Browser URL of each backend the view declared. */
   backends: Partial<Record<BackendId, string>>
-  /** Base URL under which each project directory the view declared is readable,
-   * keyed by the prop name the view chose for it. */
-  data: Record<string, string>
+  /** Each project directory the view declared, keyed by the prop name the view chose for it. */
+  data: Record<string, ViewData>
 }
 
 /** One way of presenting a project.
@@ -67,6 +71,11 @@ export interface ViewDefinition<Config = unknown> {
      * which is how {@link VIEWS} holds it. */
     Client(props: ViewClientProps<Config>): ReactNode
     access: 'owner' | 'viewer'
+    /** Project-relative directories the client may read,
+     * keyed by the prop name under which it expects each one.
+     * The route grants a separate read capability per entry,
+     * so a view names only the directories it asked for. */
+    projectData?(config: Config): Record<string, string>
   }
 }
 
@@ -108,8 +117,13 @@ const helloView: ViewDefinition<z.infer<typeof zHelloConfig>> = {
   id: 'hello',
   displayName: 'Lean LSP probe',
   zConfig: zHelloConfig,
-  describe: () => 'Looks identifiers up in a live Lean server running on this project',
-  live: { backends: ['lean-lsp'], Client: HelloClient, access: 'viewer' },
+  describe: () => `Looks identifiers up in a live Lean server, with '${HELLO_CONTEXT_FILE}' as context`,
+  live: {
+    backends: ['lean-lsp'],
+    Client: HelloClient,
+    access: 'viewer',
+    projectData: () => ({ context: '.' }),
+  },
 }
 
 export const VIEWS: readonly ViewDefinition[] = [versoView, helloView]

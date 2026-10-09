@@ -53,7 +53,13 @@ export function verifySignedDirToken(token: string): string | null {
   return Buffer.from(rootDirB64!, 'base64url').toString()
 }
 
+/** URL under which Nginx serves {@link token}'s root directory.
+ * Relative paths append to it, each segment URL-encoded. */
+export function signedDirBaseUrl(token: string): string {
+  return `/_file/${token}/`
+}
+
 /** URL at which Nginx serves {@link relPath}, a path relative to {@link token}'s root. */
 export function signedDirFileUrl(token: string, relPath: string): string {
-  return `/_file/${token}/${relPath.split('/').map(encodeURIComponent).join('/')}`
+  return signedDirBaseUrl(token) + relPath.split('/').map(encodeURIComponent).join('/')
 }
