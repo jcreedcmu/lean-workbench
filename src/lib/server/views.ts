@@ -3,7 +3,7 @@ import 'server-only'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
-import { describeValue, LAKE_TARGET_RE } from '@leanprover/workbench-shared'
+import { type BackendId, describeValue, LAKE_TARGET_RE } from '@leanprover/workbench-shared'
 import type { ReactNode } from 'react'
 import z from 'zod'
 
@@ -22,9 +22,6 @@ import z from 'zod'
  * since a project may be shared with a workbench that knows more views than this one.
  */
 export const PUBLISH_MANIFEST_FILE = 'workbench-publish.json'
-
-/** A workbench-owned process a live view runs against the project. */
-export type BackendId = 'lean-lsp'
 
 /** What the route hands a live view's client. */
 export interface ViewClientProps<Config = unknown> {

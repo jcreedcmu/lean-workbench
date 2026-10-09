@@ -4,14 +4,15 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { zBaseProject, zBaseUser, zProjectId, zUserId, zUserName } from '@leanprover/workbench-shared'
+import { zBackendId, zBaseProject, zBaseUser, zProjectId, zUserId, zUserName } from '@leanprover/workbench-shared'
 import { initTRPC, TRPCError } from '@trpc/server'
 import { z } from 'zod'
 
 import { ensureSession as ensureSessionImpl } from './editorSessions.ts'
+import { ensureView as ensureViewImpl } from './liveViews.ts'
 import { buildProjectMount, type ProjectMountHandle } from './projectMount.ts'
 import type { RcMapLease } from './rcMap.ts'
-import { mounts, vscServers } from './state.ts'
+import { lspServers, mounts, vscServers } from './state.ts'
 import { ensureUserHomeDir as ensureUserHomeDirImpl } from './user.ts'
 
 const t = initTRPC.create()
@@ -108,6 +109,30 @@ const ensureSession = t.procedure
     }),
   )
 
+/**
+ * Ensure the backends a live view of `owner/project` needs are running for `viewer`.
+ * Returns the browser URL of each one that started.
+ */
+const ensureView = t.procedure
+  .input(
+    reportingParse(
+      z.object({
+        viewer: zBaseUser,
+        owner: z.object({ id: z.string(), name: z.string() }),
+        project: zBaseProject,
+        packageSets: z.array(z.string()),
+        backends: z.array(zBackendId),
+      }),
+    ),
+  )
+  .output(reportingParse(z.object({ backends: z.partialRecord(zBackendId, z.string()) })))
+  .mutation(opts =>
+    trackMutation(async () => {
+      const { viewer, owner, project, packageSets, backends } = opts.input
+      return { backends: await ensureViewImpl(viewer, owner, project, packageSets, backends) }
+    }),
+  )
+
 const killSession = t.procedure
   .input(reportingParse(z.object({ projectId: zProjectId, sessionId: z.string() })))
   .output(reportingParse(z.null()))
@@ -141,6 +166,39 @@ const getSocketPath = t.procedure
     return null
   })
 
+const killViewSession = t.procedure
+  .input(reportingParse(z.object({ projectId: zProjectId, sessionId: z.string() })))
+  .output(reportingParse(z.null()))
+  .mutation(opts =>
+    trackMutation(async () => {
+      const { projectId, sessionId } = opts.input
+      const handles = lspServers.get(projectId) ?? []
+      const handle = handles.find(h => h.uuid === sessionId)
+      if (!handle) {
+        console.warn(`Tried to kill nonexistent live view session (ID ${sessionId})`)
+        return null
+      }
+      lspServers.set(
+        projectId,
+        handles.filter(h => h !== handle),
+      )
+      await handle[Symbol.asyncDispose]()
+      return null
+    }),
+  )
+
+/** Returns the bridge socket path and viewer associated with a specific live view session */
+const getViewSocketPath = t.procedure
+  .input(reportingParse(z.object({ sessionId: z.string() })))
+  .output(reportingParse(z.object({ socketPath: z.string(), viewerId: zUserId }).nullable()))
+  .query(async opts => {
+    for (const handles of lspServers.values()) {
+      const h = handles.find(h => h.uuid === opts.input.sessionId)
+      if (h) return { socketPath: h.socketPath, viewerId: h.viewer.id }
+    }
+    return null
+  })
+
 const listSessions = t.procedure
   .output(
     reportingParse(
@@ -168,6 +226,9 @@ export const shardManagerRouter = t.router({
   ensureSession,
   getSocketPath,
   killSession,
+  ensureView,
+  getViewSocketPath,
+  killViewSession,
   listSessions,
   ensureUserHomeDir,
 })

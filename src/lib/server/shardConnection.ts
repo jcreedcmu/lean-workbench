@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { ShardManagerAPIRouter } from '@leanprover/workbench-shard-manager'
-import { SHARD_MANAGER_SOCK } from '@leanprover/workbench-shared'
+import { type BackendId, SHARD_MANAGER_SOCK } from '@leanprover/workbench-shared'
 import { createTRPCClient, httpLink } from '@trpc/client'
 import { Pool } from 'undici'
 
@@ -42,6 +42,12 @@ const shardConnection = createTRPCClient<ShardManagerAPIRouter>({
   ],
 })
 
+/** Names of the package sets the project's mount must overlay. */
+async function packageSetsOf(project: Project): Promise<string[]> {
+  const rows = await getDb().projectPackageSet.findMany({ where: { projectId: project.id } })
+  return rows.map(({ packageSet }) => packageSet)
+}
+
 export class ShardCoordinator {
   /**
    * Lease the project's shared {@link ProjectMountHandle}, building it if none exists.
@@ -52,11 +58,10 @@ export class ShardCoordinator {
    * This can be somewhat simplified if and when publication-building is moved to shards.
    */
   async acquireProjectMount(owner: User, project: Project): Promise<AsyncDisposable & { readonly bindArgs: string[] }> {
-    const packageSets = await getDb().projectPackageSet.findMany({ where: { projectId: project.id } })
     const { leaseId, bindArgs } = await shardConnection.acquireProjectMount.mutate({
       owner,
       project,
-      packageSets: packageSets.map(({ packageSet }) => packageSet),
+      packageSets: await packageSetsOf(project),
     })
 
     return {
@@ -72,12 +77,11 @@ export class ShardCoordinator {
    * Assumes that `viewer` has permissions to view `project`.
    * Returns the path to the corresponding VSCode `iframe`. */
   async ensureSession(viewer: User, owner: User, project: Project): Promise<string> {
-    const packageSets = await getDb().projectPackageSet.findMany({ where: { projectId: project.id } })
     const response = await shardConnection.ensureSession.mutate({
       viewer,
       owner,
       project,
-      packageSets: packageSets.map(({ packageSet }) => packageSet),
+      packageSets: await packageSetsOf(project),
     })
     return response.iframeUrl
   }
@@ -86,10 +90,40 @@ export class ShardCoordinator {
     await shardConnection.killSession.mutate({ projectId, sessionId })
   }
 
+  /** Start the backends a live view of `project` needs, reusing `viewer`'s existing ones.
+   * Assumes that `viewer` has permission to view `project`.
+   * Returns the browser URL of each backend that started. */
+  async ensureView(
+    viewer: User,
+    owner: User,
+    project: Project,
+    backends: BackendId[],
+  ): Promise<Partial<Record<BackendId, string>>> {
+    const response = await shardConnection.ensureView.mutate({
+      viewer,
+      owner,
+      project,
+      packageSets: await packageSetsOf(project),
+      backends,
+    })
+    return response.backends
+  }
+
+  async killViewSession(projectId: string, sessionId: string): Promise<void> {
+    await shardConnection.killViewSession.mutate({ projectId, sessionId })
+  }
+
   /** Return the path to `sessionId`'s VS Code UDS if `userId` is allowed to view it,
    * else `undefined`. */
   async socketPathForViewer(userId: string, sessionId: string): Promise<string | undefined> {
     const response = await shardConnection.getSocketPath.query({ sessionId })
+    return response?.viewerId === userId ? response.socketPath : undefined
+  }
+
+  /** Return the path to live view session `sessionId`'s bridge UDS
+   * if `userId` is allowed to view it, else `undefined`. */
+  async viewSocketPathForViewer(userId: string, sessionId: string): Promise<string | undefined> {
+    const response = await shardConnection.getViewSocketPath.query({ sessionId })
     return response?.viewerId === userId ? response.socketPath : undefined
   }
 

@@ -76,6 +76,32 @@ http {
             return 404;
         }
 
+        # /_lsp/<session_id>/* forwards to the Lean LSP bridge identified by <session_id>,
+        # as long as the auth_request accepts the user's session cookie.
+        # Mirrors /_vs/; the bridge is a WebSocket server, so the proxied path is fixed at /.
+        location ~ ^/_lsp/(?<session_id>[^/]+)/.*$ {
+            set $auth_route_uri $uri;
+            set $auth_route_cache_key "$session_id:$http_cookie";
+            auth_request /api/auth-route/lsp;
+
+            auth_request_set $socket_path $upstream_http_x_socket_path;
+            proxy_pass http://unix:$socket_path:/;
+            proxy_http_version 1.1;
+            proxy_set_header Host $http_host;
+
+            # Support WebSocket upgrades
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+
+            # Leave connections open for 24h even if no bytes are sent.
+            proxy_read_timeout 86400;
+        }
+
+        # Block unmatched /_lsp/*
+        location /_lsp/ {
+            return 404;
+        }
+
         # /_file/<token>/<relPath> serves the static asset at <rootDir>/<relPath>
         # where <rootDir> is <token>'s root directory, as long as <token> is valid.
         # See `lib/server/authToken.ts`.
@@ -114,7 +140,7 @@ http {
         }
 
         # Validates that a request has the necessary permissions.
-        # Target of `auth_request` in /_file/* and /_vs/* requests.
+        # Target of `auth_request` in /_file/*, /_vs/*, and /_lsp/* requests.
         # See https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-subrequest-authentication/.
         location ^~ /api/auth-route/ {
             # Can only be reached by internal requests

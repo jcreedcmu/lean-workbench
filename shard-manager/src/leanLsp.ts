@@ -139,6 +139,11 @@ export class LeanLspHandle implements AsyncDisposable {
     return `lean-lsp ${this.uuid} (project ${this.project.id}, viewer ${this.viewer.id})`
   }
 
+  /** Whether shutdown has begun. Such a handle must not be handed out again. */
+  get isDisposing(): boolean {
+    return this.disposing !== undefined
+  }
+
   /** Browser path that reaches this endpoint through the nginx `/_lsp/` route. */
   get lspSocketUrl(): string {
     return `/_lsp/${this.uuid}/`
