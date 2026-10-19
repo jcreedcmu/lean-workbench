@@ -147,7 +147,13 @@ const listSessions = t.procedure
       z.array(
         z.object({
           projectId: zProjectId,
-          servers: z.array(z.object({ uuid: z.uuidv4(), viewer: z.object({ id: zUserId, name: zUserName }) })),
+          servers: z.array(
+            z.object({
+              uuid: z.uuidv4(),
+              viewer: z.object({ id: zUserId, name: zUserName }),
+              createdAt: z.iso.datetime(),
+            }),
+          ),
         }),
       ),
     ),
