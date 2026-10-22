@@ -21,30 +21,33 @@ export const HELLO_CONTEXT_FILE = 'Main.lean'
 export default function HelloClient({ projectDir, backends, data: dataDirs }: ViewClientProps) {
   const path = backends['lean-lsp']
   const context = dataDirs['context']
+  const contextUrl = context && 'url' in context ? context.url : undefined
 
   /** Set when the view's Lean server is gone for good, with a message explaining why. */
   const [ended, setEnded] = useState<string | null>(null)
 
   const sessionRef = useRef<LeanLspSession | null>(null)
-  sessionRef.current ??= new LeanLspSession({
-    path: path ?? '',
-    projectDir,
-    fileName: PROBE_FILE,
-    // Read on every (re)connect rather than once on render,
-    // so a reconnect picks up edits made in the editor since the page loaded.
-    loadContext: async () => {
-      if (!context || 'missing' in context) return ''
-      const response = await fetch(context.url + HELLO_CONTEXT_FILE)
-      return response.ok ? response.text() : ''
-    },
-    onEnd: setEnded,
-  })
   // Hold the socket open for as long as the page is here: the server reclaims an idle view.
+  // Each mount makes its own session, since a closed one cannot reopen
+  // and StrictMode unmounts and remounts in development.
   useEffect(() => {
-    const session = sessionRef.current!
+    const session = new LeanLspSession({
+      path: path ?? '',
+      projectDir,
+      fileName: PROBE_FILE,
+      // Read on every (re)connect rather than once on render,
+      // so a reconnect picks up edits made in the editor since the page loaded.
+      loadContext: async () => {
+        if (contextUrl === undefined) return ''
+        const response = await fetch(contextUrl + HELLO_CONTEXT_FILE)
+        return response.ok ? response.text() : ''
+      },
+      onEnd: setEnded,
+    })
+    sessionRef.current = session
     session.connect()
     return () => session.close()
-  }, [])
+  }, [path, projectDir, contextUrl])
 
   const [input, setInput] = useState('Nat.add')
   /** The submitted identifier, tagged with a submission count so that
@@ -54,7 +57,7 @@ export default function HelloClient({ projectDir, backends, data: dataDirs }: Vi
   // The LSP round-trip is diagnostic, so surface failures here rather than to an error boundary.
   const { data, error, isLoading } = useSWR<string | null, unknown>(
     query && ['lean-lookup', query.n, query.identifier],
-    () => sessionRef.current!.lookup(query!.identifier),
+    ([, , identifier]: [string, number, string]) => sessionRef.current!.lookup(identifier),
     { revalidateOnFocus: false, shouldRetryOnError: false },
   )
 

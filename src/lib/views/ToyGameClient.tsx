@@ -51,18 +51,15 @@ export default function ToyGameClient({ projectDir, backends, data }: ViewClient
   const [ended, setEnded] = useState<string | null>(null)
 
   const sessionRef = useRef<LeanLspSession | null>(null)
-  sessionRef.current ??= new LeanLspSession({
-    path: path ?? '',
-    projectDir,
-    fileName: PLAY_FILE,
-    onEnd: setEnded,
-  })
   // Hold the socket open for as long as the page is here: the server reclaims an idle view.
+  // Each mount makes its own session, since a closed one cannot reopen
+  // and StrictMode unmounts and remounts in development.
   useEffect(() => {
-    const session = sessionRef.current!
+    const session = new LeanLspSession({ path: path ?? '', projectDir, fileName: PLAY_FILE, onEnd: setEnded })
+    sessionRef.current = session
     session.connect()
     return () => session.close()
-  }, [])
+  }, [path, projectDir])
 
   const { data: loaded, error: loadError } = useSWR<ToyGame, unknown>(
     gameUrl && ['toy-game', gameUrl],
@@ -82,8 +79,9 @@ export default function ToyGameClient({ projectDir, backends, data }: ViewClient
     error: checkError,
     isLoading: checking,
   } = useSWR<LspDiagnostic[], unknown>(
-    attempt && ['toy-game-check', attempt.n],
-    () => sessionRef.current!.check(attemptDocument(attempt!.level, attempt!.tactics)),
+    attempt && ['toy-game-check', attempt.n, attempt.level, attempt.tactics],
+    ([, , level, tactics]: [string, number, ToyGameLevel, string]) =>
+      sessionRef.current!.check(attemptDocument(level, tactics)),
     { revalidateOnFocus: false, shouldRetryOnError: false },
   )
 

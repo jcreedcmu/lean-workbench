@@ -184,6 +184,11 @@ export class LeanLspSession {
       workspaceFolders: [{ uri: rootUri, name: 'project' }],
     })
     client.notify('initialized', {})
+    // The page may have closed the session while the socket was still opening.
+    if (this.ended !== undefined) {
+      client.close()
+      throw new Error(this.ended)
+    }
     this.client = client
     this.opened = false
     return client
