@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { type BackendId, describeValue, LAKE_TARGET_RE } from '@leanprover/workbench-shared'
+import type { Route } from 'next'
 import type { ReactNode } from 'react'
 import z from 'zod'
 
@@ -26,6 +27,10 @@ import ToyGameClient from '@/lib/views/ToyGameClient'
  * since a project may be shared with a workbench that knows more views than this one.
  */
 export const PUBLISH_MANIFEST_FILE = 'workbench-publish.json'
+
+/** App-origin path of a project's view. */
+export const viewPath = (userName: string, projectName: string, kind: string) =>
+  `/${userName}/${projectName}/view/${kind}` as Route
 
 /** Where a live view's client reads one of the project directories its view declared.
  * `missing` names the directory that is not in the project,

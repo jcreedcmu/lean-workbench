@@ -1,7 +1,8 @@
 import { zProjectName, zUserName } from '@leanprover/workbench-shared'
-import { type Route } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import z from 'zod'
+
+import { viewPath } from '@/lib/server/views'
 
 const zParams = z.object({
   userName: zUserName,
@@ -17,5 +18,5 @@ export default async function LegacyViewRedirect({ params: params_ }: { params: 
   const parsed = zParams.safeParse(await params_)
   if (!parsed.success) notFound()
   const { userName, projectName, kind } = parsed.data
-  redirect(`/${userName}/${projectName}/view/${kind}` as Route)
+  redirect(viewPath(userName, projectName, kind))
 }

@@ -1,6 +1,5 @@
 import { zProjectName, zUserName } from '@leanprover/workbench-shared'
 import { getProjectDir } from '@leanprover/workbench-shared/node'
-import { type Route } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { connection } from 'next/server'
@@ -9,7 +8,7 @@ import z from 'zod'
 import { SetNavbarExtra } from '@/app/NavbarExtra'
 import { getShardCoordinator } from '@/lib/server/shardConnection'
 import { requireProjectAccess } from '@/lib/server/util'
-import { type DeclaredView, detectViews } from '@/lib/server/views'
+import { type DeclaredView, detectViews, viewPath } from '@/lib/server/views'
 
 const zParams = z.object({
   userName: zUserName,
@@ -42,7 +41,7 @@ export default async function EditorSession({ params: params_ }: { params: Promi
     <>
       <SetNavbarExtra>
         {views.map(view => (
-          <Link className='view-link' key={view.id} href={`/${userName}/${projectName}/view/${view.id}` as Route}>
+          <Link className='view-link' key={view.id} href={viewPath(userName, projectName, view.id)}>
             {view.displayName}
           </Link>
         ))}

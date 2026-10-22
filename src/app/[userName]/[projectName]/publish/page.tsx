@@ -10,7 +10,7 @@ import { getDb } from '@/lib/server/db'
 import { durablePublicationUrl, publicationUrl } from '@/lib/server/publish'
 import { requireProjectOwner } from '@/lib/server/util'
 import { viewBuildKey } from '@/lib/server/viewBuild'
-import { detectViews, PUBLISH_MANIFEST_FILE } from '@/lib/server/views'
+import { type DeclaredView, detectViews, PUBLISH_MANIFEST_FILE, viewPath } from '@/lib/server/views'
 
 import { type PublicationInfo, PublishCard } from './PublishCard'
 
@@ -43,11 +43,13 @@ export default async function PublishPage({ params: params_ }: { params: Promise
   // A declared view with no `publish` facet has no publication to offer, so this page ignores it.
   const publishable = manifest.type === 'declared' ? manifest.views.filter(v => v.publish) : []
 
-  const publicationFor = (kind: string): PublicationInfo | undefined => {
-    const publication = publications.find(p => p.kind === kind)
+  const publicationFor = (view: DeclaredView): PublicationInfo | undefined => {
+    const publication = publications.find(p => p.kind === view.id)
     if (!publication) return undefined
     return {
-      url: publicationUrl(owner.name, project.name, kind),
+      // If a declared view is "live" then we want to give a url on the 'main site' to view it, including the ability to connect to LSP server, etc.
+      // If not, it's a pure publication that should be served from the publication domain, so that anonymous viewers can see it.
+      url: view.live ? viewPath(owner.name, project.name, view.id) : publicationUrl(owner.name, project.name, view.id),
       durableUrl: durablePublicationUrl(publication.id),
       publishedAt: formatPublishedAt(publication.updatedAt),
     }
@@ -73,7 +75,7 @@ export default async function PublishPage({ params: params_ }: { params: Promise
           kind={view.id}
           displayName={view.displayName}
           detail={'error' in view ? { error: view.error } : { description: view.description }}
-          publication={publicationFor(view.id)}
+          publication={publicationFor(view)}
           trackingKey={viewBuildKey(project.id, view.id)}
         />
       ))}

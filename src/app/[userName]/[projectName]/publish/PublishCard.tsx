@@ -85,7 +85,7 @@ export function PublishCard({
             className='delete'
             disabled={unpublishPending}
             onClick={() => {
-              if (!confirm(`Stop serving ${publication.url}? The project itself is not affected.`)) return
+              if (!confirm(`Unpublish the ${displayName}? The project itself is not affected.`)) return
               startTransition(() => unpublishAction({ userName, projectName, kind }))
             }}
           >
